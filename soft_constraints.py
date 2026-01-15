@@ -342,41 +342,46 @@ def check_non_preferred_subject(schedule_rows, reference_data, config):
     """
     Check if faculty is assigned to a non-preferred subject.
     Based on faculty preference ratings.
+    Counts each section separately (not just unique subject types).
     """
     violations = []
     
-    # Get unique faculty-subject pairs
-    pairs_checked = set()
+    # Group by faculty and subject to count sections
+    from collections import defaultdict
+    faculty_subject_sections = defaultdict(list)
     
     for row in schedule_rows:
         if row['faculty_id'] is None or row['subject_id'] is None:
             continue
         
-        pair_key = (row['faculty_id'], row['subject_id'])
-        if pair_key in pairs_checked:
-            continue
-        pairs_checked.add(pair_key)
-        
         faculty_data = reference_data.faculty_by_id.get(row['faculty_id'], {})
-        faculty_name = faculty_data.get('faculty_name', str(row['faculty_id']))
         
         # Check preferred subjects
         preferred_subjects = faculty_data.get('preferred_subjects', [])
         if preferred_subjects and row['subject_id'] not in preferred_subjects:
-            penalty = config.NON_PREFERRED_SUBJECT_PENALTY
-            
-            subject_data = reference_data.subjects_by_id.get(row['subject_id'], {})
-            subject_name = subject_data.get('subject_name', str(row['subject_id']))
-            
-            violations.append({
-                'type': 'Non-Preferred Subject',
-                'entity_type': 'Faculty',
-                'entity_name': faculty_name,
-                'subject': subject_name,
-                'magnitude': 1,
-                'penalty': penalty,
-                'details': f"{faculty_name} assigned to non-preferred subject {subject_name}"
-            })
+            pair_key = (row['faculty_id'], row['subject_id'])
+            faculty_subject_sections[pair_key].append(row)
+    
+    # Create a violation for each section of non-preferred subject
+    for (faculty_id, subject_id), sections in faculty_subject_sections.items():
+        faculty_data = reference_data.faculty_by_id.get(faculty_id, {})
+        faculty_name = faculty_data.get('faculty_name', str(faculty_id))
+        
+        subject_data = reference_data.subjects_by_id.get(subject_id, {})
+        subject_name = subject_data.get('subject_name', str(subject_id))
+        
+        penalty = config.NON_PREFERRED_SUBJECT_PENALTY
+        num_sections = len(sections)
+        
+        violations.append({
+            'type': 'Non-Preferred Subject',
+            'entity_type': 'Faculty',
+            'entity_name': faculty_name,
+            'subject': subject_name,
+            'magnitude': num_sections,
+            'penalty': penalty * num_sections,
+            'details': f"{faculty_name} assigned to {num_sections} section(s) of non-preferred subject {subject_name}"
+        })
     
     return violations
 

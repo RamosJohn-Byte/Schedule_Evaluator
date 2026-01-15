@@ -100,15 +100,15 @@ class ReferenceData:
             faculty_id = row['faculty_id']
             faculty_name = str(row['faculty_name']).strip()
             
-            # Parse preferred subjects (semicolon-separated)
+            # Parse preferred subjects (semicolon-separated, convert to int)
             preferred = []
             if pd.notna(row.get('preferred_subjects')):
-                preferred = [s.strip() for s in str(row['preferred_subjects']).split(';') if s.strip()]
+                preferred = [int(s.strip()) for s in str(row['preferred_subjects']).split(';') if s.strip()]
             
-            # Parse qualified subjects
+            # Parse qualified subjects (semicolon-separated, convert to int)
             qualified = []
             if pd.notna(row.get('qualified_subjects')):
-                qualified = [s.strip() for s in str(row['qualified_subjects']).split(';') if s.strip()]
+                qualified = [int(s.strip()) for s in str(row['qualified_subjects']).split(';') if s.strip()]
             
             data = {
                 'faculty_id': faculty_id,
