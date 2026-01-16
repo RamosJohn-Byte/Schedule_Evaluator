@@ -103,20 +103,15 @@ def check_faculty_underfill(schedule_rows, reference_data, config):
 
 def check_section_overfill(sections, reference_data, config):
     """
-    Check if section students exceed OPTIMAL room capacity (soft penalty).
-    Different from hard constraint which uses ACTUAL capacity.
+    Check if section students exceed MAX_SECTION_STUDENTS threshold (soft penalty).
     """
     violations = []
     
+    max_section_students = config.MAX_SECTION_STUDENTS
+    
     for section in sections:
-        if section.room_id is None:
-            continue
-        
-        room_data = reference_data.rooms_by_id.get(section.room_id, {})
-        optimal_capacity = room_data.get('optimal_capacity', room_data.get('capacity', 0))
-        
-        if optimal_capacity and section.total_students > optimal_capacity:
-            over_by = section.total_students - optimal_capacity
+        if section.total_students > max_section_students:
+            over_by = section.total_students - max_section_students
             penalty = config.apply_penalty(over_by, config.SECTION_OVERFILL_PER_STUDENT)
             
             violations.append({
@@ -126,10 +121,10 @@ def check_section_overfill(sections, reference_data, config):
                 'subject': section.subject_name,
                 'room': section.room_name,
                 'total_students': section.total_students,
-                'optimal_capacity': optimal_capacity,
+                'max_section_students': max_section_students,
                 'magnitude': over_by,
                 'penalty': penalty,
-                'details': f"{section.section_id}: {section.total_students} students in {section.room_name} (optimal {optimal_capacity}), over by {over_by}"
+                'details': f"{section.section_id}: {section.total_students} students (max {max_section_students}), over by {over_by}"
             })
     
     return violations
@@ -137,20 +132,16 @@ def check_section_overfill(sections, reference_data, config):
 
 def check_section_underfill(sections, reference_data, config):
     """
-    Check if section students are significantly below room capacity.
-    Penalty: per student under a threshold.
+    Check if section students are below MIN_SECTION_STUDENTS threshold.
+    Penalty: per student under the minimum.
     """
     violations = []
     
+    min_section_students = config.MIN_SECTION_STUDENTS
+    
     for section in sections:
-        if section.room_id is None:
-            continue
-        
-        room_data = reference_data.rooms_by_id.get(section.room_id, {})
-        min_capacity = room_data.get('min_capacity', 0)
-        
-        if min_capacity and section.total_students < min_capacity:
-            under_by = min_capacity - section.total_students
+        if section.total_students < min_section_students:
+            under_by = min_section_students - section.total_students
             penalty = config.apply_penalty(under_by, config.SECTION_UNDERFILL_PER_STUDENT)
             
             violations.append({
@@ -160,10 +151,10 @@ def check_section_underfill(sections, reference_data, config):
                 'subject': section.subject_name,
                 'room': section.room_name,
                 'total_students': section.total_students,
-                'min_capacity': min_capacity,
+                'min_section_students': min_section_students,
                 'magnitude': under_by,
                 'penalty': penalty,
-                'details': f"{section.section_id}: {section.total_students} students in {section.room_name} (min {min_capacity}), under by {under_by}"
+                'details': f"{section.section_id}: {section.total_students} students (min {min_section_students}), under by {under_by}"
             })
     
     return violations

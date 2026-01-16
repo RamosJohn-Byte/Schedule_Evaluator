@@ -72,6 +72,7 @@ class Config:
         
         # Thresholds
         self.MIN_SECTION_STUDENTS = raw_config.get("MIN_SECTION_STUDENTS", 10)
+        self.MAX_SECTION_STUDENTS = raw_config.get("MAX_SECTION_STUDENTS", 35)
         self.MAX_CONTINUOUS_CLASS_HOURS = raw_config.get("MAX_CONTINUOUS_CLASS_HOURS", 3)
         self.MIN_CONTINUOUS_CLASS_HOURS = raw_config.get("MIN_CONTINUOUS_CLASS_HOURS", 1.5)
         self.MAX_GAP_HOURS = raw_config.get("MAX_GAP_HOURS", 0.5)
