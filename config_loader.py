@@ -91,8 +91,8 @@ class Config:
         # Load to hours factor (1 load unit = 3 hours)
         self.LOAD_TO_MINUTES = 180  # 3 hours * 60 minutes
         
-        # Excess gap threshold
-        self.EXCESS_GAP_HOURS = raw_config.get("EXCESS_GAP_HOURS", 2.0)
+        # Excess gap threshold (use MAX_GAP_HOURS from config)
+        self.EXCESS_GAP_HOURS = raw_config.get("MAX_GAP_HOURS", 0.5)
         self.EXCESS_GAP_MINUTES = int(self.EXCESS_GAP_HOURS * 60)
         
         # Friday late threshold

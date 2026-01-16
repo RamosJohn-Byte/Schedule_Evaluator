@@ -305,18 +305,36 @@ class ScheduleLoader:
         else:
             room_name = None
         
-        # Map batch_name -> batch_id (skip if empty)
-        batch_name = row.get('batch_name', '')
-        batch_id = None
+        # Map batch_name/batch_names -> batch_id (skip if empty)
+        # Support both 'batch_name' (single) and 'batch_names' (potentially multiple, semicolon-separated)
+        # e.g., "BSCS 4 (14);BSIT 4-B (11)" -> ["BSCS 4", "BSIT 4-B"]
+        batch_name = row.get('batch_names', row.get('batch_name', ''))
+        batch_ids = []
+        batch_names = []
         batch_population = 0
+        
         if pd.notna(batch_name) and str(batch_name).strip():
-            batch_name = str(batch_name).strip()
-            batch_data = self.ref.batches_by_name.get(batch_name)
-            if batch_data:
-                batch_id = batch_data['batch_id']
-                batch_population = batch_data['population']
-        else:
-            batch_name = None
+            batch_name_str = str(batch_name).strip()
+            # Split by semicolon to handle multiple batches
+            batch_parts = [b.strip() for b in batch_name_str.split(';') if b.strip()]
+            
+            for batch_part in batch_parts:
+                # Extract just the batch name (remove student count in parentheses)
+                # e.g., "BSIT 1-A (35)" -> "BSIT 1-A"
+                if '(' in batch_part:
+                    batch_name_clean = batch_part.split('(')[0].strip()
+                else:
+                    batch_name_clean = batch_part
+                
+                batch_data = self.ref.batches_by_name.get(batch_name_clean)
+                if batch_data:
+                    batch_ids.append(batch_data['batch_id'])
+                    batch_names.append(batch_name_clean)
+                    batch_population += batch_data['population']
+        
+        # For backwards compatibility, use first batch as primary
+        batch_id = batch_ids[0] if batch_ids else None
+        batch_name = batch_names[0] if batch_names else None
         
         # Parse times
         start_time = str(row.get('start_time', '00:00'))
@@ -325,8 +343,8 @@ class ScheduleLoader:
         end_minutes = time_to_minutes(end_time)
         duration_minutes = end_minutes - start_minutes
         
-        # Normalize day
-        day = str(row.get('day', '')).strip().upper()
+        # Normalize day - support both 'day' and 'day_of_week' columns
+        day = str(row.get('day_of_week', row.get('day', ''))).strip().upper()
         
         # Get meeting_id from CSV (if present)
         meeting_id = row.get('meeting_id', idx + 1)  # Default to 1-based row index
@@ -355,6 +373,8 @@ class ScheduleLoader:
             'batch_id': batch_id,
             'batch_name': batch_name,
             'batch_population': batch_population,
+            'all_batch_ids': batch_ids if len(batch_ids) > 1 else None,
+            'all_batch_names': batch_names if len(batch_names) > 1 else None,
             
             # Time info
             'day': day,

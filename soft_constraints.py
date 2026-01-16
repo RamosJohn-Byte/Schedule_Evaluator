@@ -23,8 +23,12 @@ def check_faculty_overload(schedule_rows, reference_data, config):
     faculty_minutes = defaultdict(int)
     
     for row in schedule_rows:
-        if row['faculty_id'] is not None:
-            duration = row['end_minutes'] - row['start_minutes']
+        duration = row['end_minutes'] - row['start_minutes']
+        # Handle merged meetings - count for all faculty involved
+        if row.get('all_faculty_ids'):
+            for faculty_id in row['all_faculty_ids']:
+                faculty_minutes[faculty_id] += duration
+        elif row.get('faculty_id') is not None:
             faculty_minutes[row['faculty_id']] += duration
     
     for faculty_id, total_minutes in faculty_minutes.items():
@@ -61,8 +65,12 @@ def check_faculty_underfill(schedule_rows, reference_data, config):
     faculty_minutes = defaultdict(int)
     
     for row in schedule_rows:
-        if row['faculty_id'] is not None:
-            duration = row['end_minutes'] - row['start_minutes']
+        duration = row['end_minutes'] - row['start_minutes']
+        # Handle merged meetings - count for all faculty involved
+        if row.get('all_faculty_ids'):
+            for faculty_id in row['all_faculty_ids']:
+                faculty_minutes[faculty_id] += duration
+        elif row.get('faculty_id') is not None:
             faculty_minutes[row['faculty_id']] += duration
     
     # Check all faculty (even those with 0 classes)
@@ -191,10 +199,15 @@ def _check_min_continuous_for_entity(schedule_rows, reference_data, config, enti
     violations = []
     
     id_field = f'{entity_type}_id'
+    all_ids_field = f'all_{entity_type}_ids'
     
     by_entity = defaultdict(list)
     for row in schedule_rows:
-        if row.get(id_field) is not None:
+        # Handle merged meetings - add to all entities involved
+        if row.get(all_ids_field):
+            for entity_id in row[all_ids_field]:
+                by_entity[entity_id].append(row)
+        elif row.get(id_field) is not None:
             by_entity[row[id_field]].append(row)
     
     for entity_id, meetings in by_entity.items():
@@ -287,10 +300,15 @@ def _check_excess_gap_for_entity(schedule_rows, reference_data, config, entity_t
     violations = []
     
     id_field = f'{entity_type}_id'
+    all_ids_field = f'all_{entity_type}_ids'
     
     by_entity = defaultdict(list)
     for row in schedule_rows:
-        if row.get(id_field) is not None:
+        # Handle merged meetings - add to all entities involved
+        if row.get(all_ids_field):
+            for entity_id in row[all_ids_field]:
+                by_entity[entity_id].append(row)
+        elif row.get(id_field) is not None:
             by_entity[row[id_field]].append(row)
     
     for entity_id, meetings in by_entity.items():
@@ -342,25 +360,41 @@ def check_non_preferred_subject(schedule_rows, reference_data, config):
     """
     Check if faculty is assigned to a non-preferred subject.
     Based on faculty preference ratings.
-    Counts each section separately (not just unique subject types).
+    Counts each unique batch combination as a section.
     """
     violations = []
     
-    # Group by faculty and subject to count sections
+    # Group by faculty and subject to count unique batch combinations (sections)
     from collections import defaultdict
-    faculty_subject_sections = defaultdict(list)
+    faculty_subject_sections = defaultdict(set)  # Use set to store unique batch combinations
     
     for row in schedule_rows:
-        if row['faculty_id'] is None or row['subject_id'] is None:
+        if row.get('subject_id') is None:
             continue
         
-        faculty_data = reference_data.faculty_by_id.get(row['faculty_id'], {})
+        # Get all batches for this meeting
+        batch_ids = row.get('all_batch_ids') or ([row['batch_id']] if row.get('batch_id') is not None else [])
+        if not batch_ids:
+            continue
         
-        # Check preferred subjects
-        preferred_subjects = faculty_data.get('preferred_subjects', [])
-        if preferred_subjects and row['subject_id'] not in preferred_subjects:
-            pair_key = (row['faculty_id'], row['subject_id'])
-            faculty_subject_sections[pair_key].append(row)
+        # Create a frozenset to represent this unique batch combination
+        batch_combo = frozenset(batch_ids)
+        
+        # Handle merged meetings - check all faculty involved
+        faculty_ids_to_check = []
+        if row.get('all_faculty_ids'):
+            faculty_ids_to_check = row['all_faculty_ids']
+        elif row.get('faculty_id') is not None:
+            faculty_ids_to_check = [row['faculty_id']]
+        
+        for faculty_id in faculty_ids_to_check:
+            faculty_data = reference_data.faculty_by_id.get(faculty_id, {})
+            
+            # Check preferred subjects
+            preferred_subjects = faculty_data.get('preferred_subjects', [])
+            if preferred_subjects and row['subject_id'] not in preferred_subjects:
+                pair_key = (faculty_id, row['subject_id'])
+                faculty_subject_sections[pair_key].add(batch_combo)
     
     # Create a violation for each section of non-preferred subject
     for (faculty_id, subject_id), sections in faculty_subject_sections.items():
@@ -462,10 +496,16 @@ def check_excess_subjects(schedule_rows, reference_data, config):
     faculty_subject_details = defaultdict(set)  # For display: actual subject names
     
     for row in schedule_rows:
-        if row['faculty_id'] is not None and row['subject_name'] is not None:
+        if row.get('subject_name') is not None:
             base_name = get_base_subject_name(row['subject_name'], reference_data, row.get('subject_id'))
-            faculty_subjects[row['faculty_id']].add(base_name)
-            faculty_subject_details[row['faculty_id']].add(row['subject_name'])
+            # Handle merged meetings - add subject to all faculty involved
+            if row.get('all_faculty_ids'):
+                for faculty_id in row['all_faculty_ids']:
+                    faculty_subjects[faculty_id].add(base_name)
+                    faculty_subject_details[faculty_id].add(row['subject_name'])
+            elif row.get('faculty_id') is not None:
+                faculty_subjects[row['faculty_id']].add(base_name)
+                faculty_subject_details[row['faculty_id']].add(row['subject_name'])
     
     for faculty_id, base_subjects in faculty_subjects.items():
         if len(base_subjects) > max_subjects:
@@ -514,8 +554,14 @@ def check_external_meeting_conflicts(schedule_rows, reference_data, config):
         ext_end = ext['end_minutes']
         
         for meeting in schedule_rows:
-            # Check faculty match
-            if meeting['faculty_name'] != ext_faculty:
+            # Check faculty match - need to check all faculty in merged meetings
+            faculty_names_to_check = []
+            if meeting.get('all_faculty_names'):
+                faculty_names_to_check = meeting['all_faculty_names']
+            elif meeting.get('faculty_name'):
+                faculty_names_to_check = [meeting['faculty_name']]
+            
+            if ext_faculty not in faculty_names_to_check:
                 continue
             
             # Check day

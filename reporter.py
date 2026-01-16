@@ -369,9 +369,9 @@ def generate_structural_violations_csv(schedule_rows, sections, filepath):
                 'Subject': meeting.get('subject_name', 'N/A'),
                 'Day': meeting.get('day', 'N/A'),
                 'Time': f"{meeting.get('start_time', '')}-{meeting.get('end_time', '')}",
-                'Faculty': ', '.join(meeting.get('all_faculty_names', [])) or 'MISSING',
-                'Batches': ', '.join(meeting.get('all_batch_names', [])) or 'MISSING',
-                'Room': ', '.join(meeting.get('all_room_names', [])) or 'MISSING',
+                'Faculty': ', '.join(meeting.get('all_faculty_names') or [meeting.get('faculty_name')] if meeting.get('faculty_name') else []) or 'MISSING',
+                'Batches': ', '.join(meeting.get('all_batch_names') or [meeting.get('batch_name')] if meeting.get('batch_name') else []) or 'MISSING',
+                'Room': ', '.join(meeting.get('all_room_names') or [meeting.get('room_name')] if meeting.get('room_name') else []) or 'MISSING',
                 'Issues': '; '.join(issues)
             })
     
@@ -463,12 +463,17 @@ def generate_meeting_unification_summary(schedule_rows, unmerged_rows, filepath)
                     faculty_str = f"{row['faculty_name']} [{row_id}]"
                     break
             
-            # Find batch sources
+            # Find batch sources - handle both single and multiple batches per row
             batch_map = {}
             for row_id in merged_from:
                 row = row_map.get(row_id)
-                if row and row.get('batch_name'):
-                    batch_map[row['batch_name']] = row_id
+                if row:
+                    # Check if row has multiple batches (all_batch_names)
+                    if row.get('all_batch_names'):
+                        for batch in row['all_batch_names']:
+                            batch_map[batch] = row_id
+                    elif row.get('batch_name'):
+                        batch_map[row['batch_name']] = row_id
             
             if batch_map:
                 batch_strs = [f"{batch} [{row_id}]" for batch, row_id in sorted(batch_map.items())]
@@ -636,7 +641,12 @@ def generate_entity_groupings(schedule_rows, reference_data, filepath, unmerged_
     
     by_faculty = defaultdict(list)
     for row in schedule_rows:
-        if row['faculty_id'] is not None:
+        # Check if this meeting has multiple faculty (merged meeting)
+        if row.get('all_faculty_ids'):
+            # Add to all faculty involved
+            for fac_id in row['all_faculty_ids']:
+                by_faculty[fac_id].append(row)
+        elif row.get('faculty_id') is not None:
             by_faculty[row['faculty_id']].append(row)
     
     for faculty_id in sorted(by_faculty.keys()):
@@ -658,7 +668,12 @@ def generate_entity_groupings(schedule_rows, reference_data, filepath, unmerged_
                 day_meetings = sorted(by_day[day], key=lambda x: x['start_minutes'])
                 lines.append(f"  {day}:")
                 for m in day_meetings:
-                    lines.append(f"    Row {m.get('meeting_id', '?'):4} | {m['start_time']}-{m['end_time']} | {m['subject_name']:20} | Room: {m['room_name'] or 'N/A':10} | Batch: {m['batch_name'] or 'N/A'}")
+                    # Show all batches if merged
+                    batch_display = m['batch_name'] or 'N/A'
+                    if m.get('all_batch_names') and len(m['all_batch_names']) > 1:
+                        batch_display = ', '.join(m['all_batch_names'])
+                    
+                    lines.append(f"    Row {m.get('meeting_id', '?'):4} | {m['start_time']}-{m['end_time']} | {m['subject_name']:20} | Room: {m['room_name'] or 'N/A':10} | Batch: {batch_display}")
     
     # =========================================================================
     # GROUP BY BATCH
@@ -670,7 +685,12 @@ def generate_entity_groupings(schedule_rows, reference_data, filepath, unmerged_
     
     by_batch = defaultdict(list)
     for row in schedule_rows:
-        if row['batch_id'] is not None:
+        # Check if this meeting has multiple batches (merged meeting)
+        if row.get('all_batch_ids'):
+            # Add to all batches involved
+            for batch_id in row['all_batch_ids']:
+                by_batch[batch_id].append(row)
+        elif row.get('batch_id') is not None:
             by_batch[row['batch_id']].append(row)
     
     for batch_id in sorted(by_batch.keys()):
@@ -691,7 +711,12 @@ def generate_entity_groupings(schedule_rows, reference_data, filepath, unmerged_
                 day_meetings = sorted(by_day[day], key=lambda x: x['start_minutes'])
                 lines.append(f"  {day}:")
                 for m in day_meetings:
-                    lines.append(f"    Row {m.get('meeting_id', '?'):4} | {m['start_time']}-{m['end_time']} | {m['subject_name']:20} | Room: {m['room_name'] or 'N/A':10} | Faculty: {m['faculty_name'] or 'N/A'}")
+                    # Show all faculty if merged
+                    faculty_display = m['faculty_name'] or 'N/A'
+                    if m.get('all_faculty_names') and len(m['all_faculty_names']) > 1:
+                        faculty_display = ', '.join(m['all_faculty_names'])
+                    
+                    lines.append(f"    Row {m.get('meeting_id', '?'):4} | {m['start_time']}-{m['end_time']} | {m['subject_name']:20} | Room: {m['room_name'] or 'N/A':10} | Faculty: {faculty_display}")
     
     # =========================================================================
     # GROUP BY ROOM
@@ -703,7 +728,12 @@ def generate_entity_groupings(schedule_rows, reference_data, filepath, unmerged_
     
     by_room = defaultdict(list)
     for row in schedule_rows:
-        if row['room_id'] is not None:
+        # Check if this meeting has multiple rooms (merged meeting)
+        if row.get('all_room_ids'):
+            # Add to all rooms involved
+            for room_id in row['all_room_ids']:
+                by_room[room_id].append(row)
+        elif row.get('room_id') is not None:
             by_room[row['room_id']].append(row)
     
     for room_id in sorted(by_room.keys()):
@@ -724,7 +754,16 @@ def generate_entity_groupings(schedule_rows, reference_data, filepath, unmerged_
                 day_meetings = sorted(by_day[day], key=lambda x: x['start_minutes'])
                 lines.append(f"  {day}:")
                 for m in day_meetings:
-                    lines.append(f"    Row {m.get('meeting_id', '?'):4} | {m['start_time']}-{m['end_time']} | {m['subject_name']:20} | Faculty: {m['faculty_name'] or 'N/A':15} | Batch: {m['batch_name'] or 'N/A'}")
+                    # Show all faculty and batches if merged
+                    faculty_display = m['faculty_name'] or 'N/A'
+                    if m.get('all_faculty_names') and len(m['all_faculty_names']) > 1:
+                        faculty_display = ', '.join(m['all_faculty_names'])
+                    
+                    batch_display = m['batch_name'] or 'N/A'
+                    if m.get('all_batch_names') and len(m['all_batch_names']) > 1:
+                        batch_display = ', '.join(m['all_batch_names'])
+                    
+                    lines.append(f"    Row {m.get('meeting_id', '?'):4} | {m['start_time']}-{m['end_time']} | {m['subject_name']:20} | Faculty: {faculty_display:15} | Batch: {batch_display}")
     
     # =========================================================================
     # SUMMARY STATISTICS

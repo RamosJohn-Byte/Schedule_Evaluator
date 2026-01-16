@@ -34,7 +34,11 @@ def check_faculty_time_conflicts(schedule_rows, reference_data):
     # Group by faculty_id
     by_faculty = defaultdict(list)
     for row in schedule_rows:
-        if row['faculty_id'] is not None:
+        # Handle merged meetings - add to all faculty involved
+        if row.get('all_faculty_ids'):
+            for faculty_id in row['all_faculty_ids']:
+                by_faculty[faculty_id].append(row)
+        elif row.get('faculty_id') is not None:
             by_faculty[row['faculty_id']].append(row)
     
     for faculty_id, meetings in by_faculty.items():
@@ -93,7 +97,11 @@ def check_batch_time_conflicts(schedule_rows, reference_data):
     # Group by batch_id
     by_batch = defaultdict(list)
     for row in schedule_rows:
-        if row['batch_id'] is not None:
+        # Handle merged meetings - add to all batches involved
+        if row.get('all_batch_ids'):
+            for batch_id in row['all_batch_ids']:
+                by_batch[batch_id].append(row)
+        elif row.get('batch_id') is not None:
             by_batch[row['batch_id']].append(row)
     
     for batch_id, meetings in by_batch.items():
@@ -150,7 +158,11 @@ def check_room_time_conflicts(schedule_rows, reference_data):
     # Group by room_id
     by_room = defaultdict(list)
     for row in schedule_rows:
-        if row['room_id'] is not None:
+        # Handle merged meetings - add to all rooms involved
+        if row.get('all_room_ids'):
+            for room_id in row['all_room_ids']:
+                by_room[room_id].append(row)
+        elif row.get('room_id') is not None:
             by_room[row['room_id']].append(row)
     
     for room_id, meetings in by_room.items():
@@ -258,10 +270,15 @@ def _check_continuous_for_entity_type(schedule_rows, reference_data, config, ent
     # Group by entity
     id_field = f'{entity_type}_id'
     name_field = f'{entity_type}_name'
+    all_ids_field = f'all_{entity_type}_ids'
     
     by_entity = defaultdict(list)
     for row in schedule_rows:
-        if row.get(id_field) is not None:
+        # Handle merged meetings - add to all entities involved
+        if row.get(all_ids_field):
+            for entity_id in row[all_ids_field]:
+                by_entity[entity_id].append(row)
+        elif row.get(id_field) is not None:
             by_entity[row[id_field]].append(row)
     
     for entity_id, meetings in by_entity.items():
@@ -370,10 +387,15 @@ def _check_gap_for_entity_type(schedule_rows, reference_data, config, entity_typ
     violations = []
     
     id_field = f'{entity_type}_id'
+    all_ids_field = f'all_{entity_type}_ids'
     
     by_entity = defaultdict(list)
     for row in schedule_rows:
-        if row.get(id_field) is not None:
+        # Handle merged meetings - add to all entities involved
+        if row.get(all_ids_field):
+            for entity_id in row[all_ids_field]:
+                by_entity[entity_id].append(row)
+        elif row.get(id_field) is not None:
             by_entity[row[id_field]].append(row)
     
     for entity_id, meetings in by_entity.items():
@@ -438,8 +460,16 @@ def check_banned_times(schedule_rows, reference_data):
                 continue
             
             # If banned time is faculty-specific, check faculty match
-            if banned_faculty and meeting['faculty_name'] != banned_faculty:
-                continue
+            if banned_faculty:
+                # Check all faculty in merged meetings
+                faculty_names_to_check = []
+                if meeting.get('all_faculty_names'):
+                    faculty_names_to_check = meeting['all_faculty_names']
+                elif meeting.get('faculty_name'):
+                    faculty_names_to_check = [meeting['faculty_name']]
+                
+                if banned_faculty not in faculty_names_to_check:
+                    continue
             
             # Check time overlap
             if check_overlap(meeting['start_minutes'], meeting['end_minutes'],

@@ -163,10 +163,7 @@ def main(schedule_path="INPUT/schedule.csv",
         error_lecture_lab_pairs=error_lecture_lab_pairs
     )
     
-    # Print quick summary
-    print_quick_summary(hard_violations, soft_violations)
-    
-    # Return results
+    # Print quick summary and return results
     return {
         'hard_violations': hard_violations,
         'soft_violations': soft_violations,
