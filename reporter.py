@@ -355,11 +355,14 @@ def generate_structural_violations_csv(schedule_rows, sections, filepath):
     # Check meetings for missing data
     for meeting in schedule_rows:
         issues = []
-        if meeting.get('faculty_id') is None:
+        # Check for missing faculty (either single or multiple)
+        if meeting.get('faculty_id') is None and not meeting.get('all_faculty_ids'):
             issues.append('Missing Faculty')
-        if not meeting.get('all_batch_ids'):
+        # Check for missing batches (either single or multiple)
+        if meeting.get('batch_id') is None and not meeting.get('all_batch_ids'):
             issues.append('Missing Batches')
-        if meeting.get('room_id') is None:
+        # Check for missing room (either single or multiple)
+        if meeting.get('room_id') is None and not meeting.get('all_room_ids'):
             issues.append('Missing Room')
         
         if issues:
