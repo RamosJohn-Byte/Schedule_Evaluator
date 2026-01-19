@@ -14,8 +14,10 @@ from data_loader import minutes_to_time_str, format_duration
 
 def check_faculty_overload(schedule_rows, reference_data, config):
     """
-    Check if faculty teaching hours exceed max_hours.
-    Penalty: per minute over.
+    Check if faculty teaching load exceeds max_load.
+    Load calculation: ((total_minutes / 60) / 3) + starting_load
+    Violation: actual_load - max_load (in load units)
+    Penalty: per load unit over.
     """
     violations = []
     
@@ -34,21 +36,29 @@ def check_faculty_overload(schedule_rows, reference_data, config):
     for faculty_id, total_minutes in faculty_minutes.items():
         faculty_data = reference_data.faculty_by_id.get(faculty_id, {})
         faculty_name = faculty_data.get('faculty_name', str(faculty_id))
-        max_minutes = faculty_data.get('max_hours_per_week', 0) * 60
+        max_load = faculty_data.get('max_load', 0)
+        starting_load = faculty_data.get('starting_load', 0)
         
-        if max_minutes > 0 and total_minutes > max_minutes:
-            over_by = total_minutes - max_minutes
-            penalty = config.apply_penalty(over_by, config.FACULTY_OVERLOAD_PER_MINUTE)
+        # Convert minutes to load units and add starting load: ((total_minutes / 60) / 3) + starting_load
+        schedule_load = (total_minutes / 60) / 3
+        actual_load = schedule_load + starting_load
+        
+        if max_load > 0 and actual_load > max_load:
+            over_by_load = actual_load - max_load
+            penalty = config.apply_penalty(over_by_load, config.FACULTY_OVERLOAD_PER_LOAD)
             
             violations.append({
                 'type': 'Faculty Overload',
                 'entity_type': 'Faculty',
                 'entity_name': faculty_name,
                 'total_minutes': total_minutes,
-                'max_minutes': max_minutes,
-                'magnitude': over_by,
+                'schedule_load': schedule_load,
+                'starting_load': starting_load,
+                'actual_load': actual_load,
+                'max_load': max_load,
+                'magnitude': over_by_load,
                 'penalty': penalty,
-                'details': f"{faculty_name}: {format_duration(total_minutes)} assigned, max {format_duration(max_minutes)}, over by {format_duration(over_by)}"
+                'details': f"{faculty_name}: {actual_load:.2f} load ({schedule_load:.2f} schedule + {starting_load:.2f} starting = {format_duration(total_minutes)}), max {max_load} load, over by {over_by_load:.2f} load"
             })
     
     return violations
@@ -56,8 +66,10 @@ def check_faculty_overload(schedule_rows, reference_data, config):
 
 def check_faculty_underfill(schedule_rows, reference_data, config):
     """
-    Check if faculty teaching hours below min_hours.
-    Penalty: per minute under.
+    Check if faculty teaching load below min_load.
+    Load calculation: ((total_minutes / 60) / 3) + starting_load
+    Violation: min_load - actual_load (in load units)
+    Penalty: per load unit under.
     """
     violations = []
     
@@ -76,22 +88,30 @@ def check_faculty_underfill(schedule_rows, reference_data, config):
     # Check all faculty (even those with 0 classes)
     for faculty_id, faculty_data in reference_data.faculty_by_id.items():
         faculty_name = faculty_data.get('faculty_name', str(faculty_id))
-        min_minutes = faculty_data.get('min_hours_per_week', 0) * 60
+        min_load = faculty_data.get('min_load', 0)
+        starting_load = faculty_data.get('starting_load', 0)
         total_minutes = faculty_minutes.get(faculty_id, 0)
         
-        if min_minutes > 0 and total_minutes < min_minutes:
-            under_by = min_minutes - total_minutes
-            penalty = config.apply_penalty(under_by, config.FACULTY_UNDERFILL_PER_MINUTE)
+        # Convert minutes to load units and add starting load: ((total_minutes / 60) / 3) + starting_load
+        schedule_load = (total_minutes / 60) / 3
+        actual_load = schedule_load + starting_load
+        
+        if min_load > 0 and actual_load < min_load:
+            under_by_load = min_load - actual_load
+            penalty = config.apply_penalty(under_by_load, config.FACULTY_UNDERFILL_PER_LOAD)
             
             violations.append({
                 'type': 'Faculty Underfill',
                 'entity_type': 'Faculty',
                 'entity_name': faculty_name,
                 'total_minutes': total_minutes,
-                'min_minutes': min_minutes,
-                'magnitude': under_by,
+                'schedule_load': schedule_load,
+                'starting_load': starting_load,
+                'actual_load': actual_load,
+                'min_load': min_load,
+                'magnitude': under_by_load,
                 'penalty': penalty,
-                'details': f"{faculty_name}: {format_duration(total_minutes)} assigned, min {format_duration(min_minutes)}, under by {format_duration(under_by)}"
+                'details': f"{faculty_name}: {actual_load:.2f} load ({schedule_load:.2f} schedule + {starting_load:.2f} starting = {format_duration(total_minutes)}), min {min_load} load, under by {under_by_load:.2f} load"
             })
     
     return violations
@@ -478,9 +498,9 @@ def check_excess_subjects(schedule_rows, reference_data, config):
     """
     Check if faculty is assigned too many unique subjects.
     Lecture and lab of same subject count as ONE subject.
+    Violation: actual_subjects - faculty.max_subjects
     """
     violations = []
-    max_subjects = config.MAX_SUBJECTS_PER_FACULTY
     
     # Count unique BASE subjects per faculty (lecture+lab = 1)
     faculty_subjects = defaultdict(set)
@@ -499,10 +519,11 @@ def check_excess_subjects(schedule_rows, reference_data, config):
                 faculty_subject_details[row['faculty_id']].add(row['subject_name'])
     
     for faculty_id, base_subjects in faculty_subjects.items():
-        if len(base_subjects) > max_subjects:
-            faculty_data = reference_data.faculty_by_id.get(faculty_id, {})
-            faculty_name = faculty_data.get('faculty_name', str(faculty_id))
-            
+        faculty_data = reference_data.faculty_by_id.get(faculty_id, {})
+        faculty_name = faculty_data.get('faculty_name', str(faculty_id))
+        max_subjects = faculty_data.get('max_subjects', 99)  # Get from faculty data
+        
+        if max_subjects > 0 and len(base_subjects) > max_subjects:
             excess = len(base_subjects) - max_subjects
             penalty = config.apply_penalty(excess, config.EXCESS_SUBJECTS_PENALTY_PER_SUBJECT)
             

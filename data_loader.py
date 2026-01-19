@@ -13,7 +13,15 @@ def time_to_minutes(time_str):
     try:
         if pd.isna(time_str):
             return 0
-        t = datetime.strptime(str(time_str).strip(), "%H:%M")
+        time_str = str(time_str).strip()
+        
+        # Handle edge case: "12" should be "12:00" (noon), not "00:12"
+        # If it's just a number without colon, treat it as hours
+        if ':' not in time_str:
+            hours = int(time_str)
+            return hours * 60
+        
+        t = datetime.strptime(time_str, "%H:%M")
         return t.hour * 60 + t.minute
     except:
         return 0
@@ -116,6 +124,7 @@ class ReferenceData:
                 'min_load': float(row.get('min_load', 0)),
                 'max_load': float(row.get('max_load', 99)),
                 'max_subjects': int(row.get('max_subjects', 99)),
+                'starting_load': float(row.get('starting_load', 0)) if pd.notna(row.get('starting_load')) else 0.0,
                 'preferred_subjects': preferred,
                 'qualified_subjects': qualified
             }

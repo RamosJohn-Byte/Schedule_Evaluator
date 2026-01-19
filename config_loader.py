@@ -38,8 +38,8 @@ def get_default_config():
 def get_default_penalties():
     """Return default penalty values."""
     return {
-        "FACULTY_OVERLOAD_PER_MINUTE": 1,
-        "FACULTY_UNDERFILL_PER_MINUTE": 1,
+        "FACULTY_OVERLOAD_PER_LOAD": 1,
+        "FACULTY_UNDERFILL_PER_LOAD": 1,
         "ROOM_OVERCAPACITY_PER_STUDENT": 1,
         "SECTION_OVERFILL_PER_STUDENT": 1,
         "SECTION_UNDERFILL_PER_STUDENT": 1,
@@ -104,8 +104,9 @@ class Config:
         
         # Penalty weights
         penalties = raw_config.get("ConstraintPenalties", get_default_penalties())
-        self.FACULTY_OVERLOAD_PER_MINUTE = penalties.get("FACULTY_OVERLOAD_PER_MINUTE", 1)
-        self.FACULTY_UNDERFILL_PER_MINUTE = penalties.get("FACULTY_UNDERFILL_PER_MINUTE", 1)
+        # Faculty load penalties are per load unit (not per minute)
+        self.FACULTY_OVERLOAD_PER_LOAD = penalties.get("FACULTY_OVERLOAD_PER_LOAD", penalties.get("FACULTY_OVERLOAD_PER_MINUTE", 1))
+        self.FACULTY_UNDERFILL_PER_LOAD = penalties.get("FACULTY_UNDERFILL_PER_LOAD", penalties.get("FACULTY_UNDERFILL_PER_MINUTE", 1))
         self.SECTION_OVERFILL_PER_STUDENT = penalties.get("SECTION_OVERFILL_PER_STUDENT", 1)
         self.SECTION_UNDERFILL_PER_STUDENT = penalties.get("SECTION_UNDERFILL_PER_STUDENT", 1)
         self.MIN_CONTINUOUS_PENALTY_PER_MINUTE = penalties.get("UNDER_MINIMUM_BLOCK_PER_MINUTE", 0)
