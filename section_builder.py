@@ -105,9 +105,15 @@ def build_sections(schedule_rows, reference_data):
             continue
         
         # Get batch ids - handle both merged (all_batch_ids) and single (batch_id)
-        batch_ids = meeting.get('all_batch_ids', [])
+        batch_ids = meeting.get('all_batch_ids')
+        if batch_ids is None:
+            batch_ids = []
         if not batch_ids and meeting.get('batch_id') is not None:
             batch_ids = [meeting['batch_id']]
+        
+        # Skip meetings with no faculty and no batch (can't group them meaningfully)
+        if meeting.get('faculty_id') is None and not batch_ids:
+            continue
         
         # Get faculty_id
         faculty_id = meeting.get('faculty_id')
@@ -116,7 +122,7 @@ def build_sections(schedule_rows, reference_data):
         key = (
             meeting['subject_id'],
             faculty_id,
-            frozenset(batch_ids)
+            frozenset(batch_ids) if batch_ids else frozenset()
         )
         
         meeting_groups[key].append(meeting)
